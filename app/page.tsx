@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import BookingSuccessDialog from "@/components/booking-success-dialog";
 
 const locations = [
   { id: "center", name: "На Ленина", address: "ул. Ленина, 14", metro: "м. Площадь Ленина", mark: "01" },
@@ -34,7 +35,7 @@ function getToday() {
 
 function formatRussianPhone(value: string) {
   let digits = value.replace(/\D/g, "");
-  if (digits.startsWith("7") || digits.startsWith("8")) digits = digits.slice(1);
+  if (value.startsWith("+7") || (digits.length > 10 && /^[78]/.test(digits))) digits = digits.slice(1);
   digits = digits.slice(0, 10);
   if (!digits) return "";
 
@@ -53,6 +54,7 @@ export default function Home() {
   const [time, setTime] = useState("");
   const [phone, setPhone] = useState("");
   const [notice, setNotice] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const total = useMemo(() => services.filter((service) => selected.includes(service.id)).reduce((sum, service) => sum + service.price, 0), [selected]);
 
   useEffect(() => {
@@ -110,7 +112,8 @@ export default function Home() {
       return;
     }
     const locationName = locations.find((item) => item.id === location)?.name ?? "";
-    setNotice(`Готово! Позвоним вам, чтобы подтвердить визит ${date.split("-").reverse().join(".")} в ${time} — ${locationName}.`);
+    setNotice("");
+    setConfirmation(`Позвоним вам, чтобы подтвердить визит ${date.split("-").reverse().join(".")} в ${time} — ${locationName}.`);
   }
 
   return (
@@ -165,12 +168,17 @@ export default function Home() {
           <fieldset className="booking-group" id="locations"><legend><span>01</span> ВЫБЕРИ БАРБЕРШОП</legend><div className="location-grid">{locations.map((item) => <button type="button" key={item.id} className={`location-option${location === item.id ? " selected" : ""}`} onClick={() => setLocation(item.id)} aria-pressed={location === item.id}><span className="location-mark">{item.mark}</span><strong>{item.name}</strong><small>{item.address}</small><small>{item.metro}</small><span className="location-check">{location === item.id ? "✓" : "+"}</span></button>)}</div></fieldset>
           <fieldset className="booking-group"><legend><span>02</span> ВЫБЕРИ УСЛУГУ</legend><div className="booking-services">{services.map((service) => <button type="button" key={service.id} onClick={() => toggleService(service.id)} className={`booking-service${selected.includes(service.id) ? " selected" : ""}`} aria-pressed={selected.includes(service.id)}><span className="service-check">{selected.includes(service.id) ? "✓" : "+"}</span><span className="booking-service-name">{service.name}<small>{service.duration}</small></span><span className="booking-service-price">{rubles.format(service.price)} ₽</span></button>)}</div></fieldset>
           <div className="date-time-row"><label className="booking-group date-group"><span className="group-title"><span>03</span> ДАТА ВИЗИТА</span><input type="date" value={date} min={getToday()} onChange={(event) => setDate(event.target.value)} required /></label><fieldset className="booking-group time-group"><legend><span>04</span> СВОБОДНОЕ ВРЕМЯ</legend><div className="time-options">{timeSlots.map((slot) => <button type="button" key={slot} className={time === slot ? "selected" : ""} onClick={() => { setTime(slot); setNotice(""); }}>{slot}</button>)}</div></fieldset></div>
-          <div className="guest-fields"><label>ТВОЁ ИМЯ<input name="name" type="text" placeholder="Как к тебе обращаться" autoComplete="name" required /></label><label>ТЕЛЕФОН<input name="phone" type="tel" inputMode="tel" placeholder="+7 (___) ___-__-__" autoComplete="tel" value={phone} onChange={(event) => setPhone(formatRussianPhone(event.target.value))} pattern="\\+7 \\(\\d{3}\\) \\d{3}-\\d{2}-\\d{2}" maxLength={18} required /></label></div>
+          <div className="guest-fields"><label>ТВОЁ ИМЯ<input name="name" type="text" placeholder="Как к тебе обращаться" autoComplete="name" required /></label><label>ТЕЛЕФОН<input name="phone" type="tel" inputMode="tel" placeholder="+7 (___) ___-__-__" autoComplete="tel" value={phone} onChange={(event) => setPhone(formatRussianPhone(event.target.value))} pattern={String.raw`\+7 \([0-9]{3}\) [0-9]{3}-[0-9]{2}-[0-9]{2}`} title="Введите номер полностью: +7 (999) 123-45-67" maxLength={18} required /></label></div>
+          <label className="booking-consent">
+            <input type="checkbox" name="personalDataConsent" required />
+            <span>Я соглашаюсь на обработку персональных данных.</span>
+          </label>
           <div className="form-bottom"><div className="booking-total"><span>ИТОГО ЗА УСЛУГИ</span><strong>{rubles.format(total)} <small>₽</small></strong></div><button className="button button-copper submit-booking" type="submit">Записаться <span>↗</span></button></div>
           {notice && <p className="booking-notice" role="status">{notice}</p>}
-          <p className="form-privacy">Нажимая «Записаться», ты соглашаешься на обработку персональных данных.</p>
         </form>
       </section>
+
+      {confirmation && <BookingSuccessDialog message={confirmation} onClose={() => setConfirmation("")} />}
 
       <section className="closing"><span className="section-index">ХОРОШО ВЫГЛЯДИШЬ — ХОРОШО СЕБЯ ЧУВСТВУЕШЬ.</span><p>До встречи в кресле.</p><a href="#booking">ЗАПИСАТЬСЯ ↗</a></section>
       <footer className="site-footer"><a className="wordmark" href="#top">ЧЕРТА<span>®</span></a><span>БАРБЕРШОП ДЛЯ СВОИХ · 2026</span><div><a href="tel:+78005553535">+7 800 555-35-35</a><span>СДЕЛАНО С ХАРАКТЕРОМ</span></div></footer>
