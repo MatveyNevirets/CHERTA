@@ -3,12 +3,9 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import BookingSuccessDialog from "@/components/booking-success-dialog";
-
-const locations = [
-  { id: "center", name: "На Ленина", address: "ул. Ленина, 14", metro: "м. Площадь Ленина", mark: "01" },
-  { id: "embankment", name: "На Набережной", address: "Набережная, 8", metro: "м. Горьковская", mark: "02" },
-  { id: "loft", name: "Лофт на Мира", address: "ул. Мира, 27", metro: "м. Стрелка", mark: "03" },
-];
+import FormFieldError from "@/components/form-field-error";
+import { locations } from "@/lib/locations";
+import { russianPhonePattern, validateBooking, type BookingErrors } from "@/lib/booking-validation";
 
 const services = [
   { id: "hair", name: "Мужская стрижка", detail: "Консультация · мытьё · укладка", duration: "60 мин", price: 2200, icon: "✳" },
@@ -52,9 +49,14 @@ export default function Home() {
   const [selected, setSelected] = useState<string[]>(["hair"]);
   const [date, setDate] = useState(getToday);
   const [time, setTime] = useState("");
+  const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [notice, setNotice] = useState("");
+  const [personalDataConsent, setPersonalDataConsent] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
   const [confirmation, setConfirmation] = useState("");
+  const bookingValues = { services: selected, date, time, name, phone, personalDataConsent };
+  const errors: BookingErrors = hasSubmitted ? validateBooking(bookingValues, getToday()) : {};
+  const hasErrors = Object.keys(errors).length > 0;
   const total = useMemo(() => services.filter((service) => selected.includes(service.id)).reduce((sum, service) => sum + service.price, 0), [selected]);
 
   useEffect(() => {
@@ -98,21 +100,19 @@ export default function Home() {
 
   function toggleService(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((serviceId) => serviceId !== id) : [...current, id]);
-    setNotice("");
   }
 
   function handleBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected.length) {
-      setNotice("Выберите хотя бы одну услугу — и мы подберём свободное время.");
-      return;
-    }
-    if (!time) {
-      setNotice("Остался последний шаг: выберите удобное время.");
+    setHasSubmitted(true);
+    const validationErrors = validateBooking(bookingValues, getToday());
+    const firstInvalidField = Object.keys(validationErrors)[0];
+    if (firstInvalidField) {
+      event.currentTarget.querySelector<HTMLElement>(`[data-booking-field="${firstInvalidField}"]`)?.focus();
       return;
     }
     const locationName = locations.find((item) => item.id === location)?.name ?? "";
-    setNotice("");
+    setHasSubmitted(false);
     setConfirmation(`Позвоним вам, чтобы подтвердить визит ${date.split("-").reverse().join(".")} в ${time} — ${locationName}.`);
   }
 
@@ -163,25 +163,51 @@ export default function Home() {
 
       <section className="booking-section" id="booking">
         <div className="booking-intro"><div className="section-index">[ 03 — ТВОЙ ВИЗИТ ]</div><h2>Забронируй<br />своё <em>кресло.</em></h2><p>Пара минут — и время для себя уже в календаре.</p><div className="booking-quote"><span>“</span><p>Приходи на пять минут раньше. Успеешь выдохнуть и выбрать напиток.</p></div><div className="booking-hours"><span>ЕЖЕДНЕВНО</span><strong>10:00 — 22:00</strong></div></div>
-        <form className="booking-form" onSubmit={handleBooking}>
+        <form className="booking-form" onSubmit={handleBooking} noValidate>
           <div className="booking-form-head"><div><span>ОНЛАЙН-ЗАПИСЬ</span><h3>Займи своё кресло.</h3></div><span className="booking-estimate">≈ 2 МИНУТЫ</span></div>
           <fieldset className="booking-group" id="locations"><legend><span>01</span> ВЫБЕРИ БАРБЕРШОП</legend><div className="location-grid">{locations.map((item) => <button type="button" key={item.id} className={`location-option${location === item.id ? " selected" : ""}`} onClick={() => setLocation(item.id)} aria-pressed={location === item.id}><span className="location-mark">{item.mark}</span><strong>{item.name}</strong><small>{item.address}</small><small>{item.metro}</small><span className="location-check">{location === item.id ? "✓" : "+"}</span></button>)}</div></fieldset>
-          <fieldset className="booking-group"><legend><span>02</span> ВЫБЕРИ УСЛУГУ</legend><div className="booking-services">{services.map((service) => <button type="button" key={service.id} onClick={() => toggleService(service.id)} className={`booking-service${selected.includes(service.id) ? " selected" : ""}`} aria-pressed={selected.includes(service.id)}><span className="service-check">{selected.includes(service.id) ? "✓" : "+"}</span><span className="booking-service-name">{service.name}<small>{service.duration}</small></span><span className="booking-service-price">{rubles.format(service.price)} ₽</span></button>)}</div></fieldset>
-          <div className="date-time-row"><label className="booking-group date-group"><span className="group-title"><span>03</span> ДАТА ВИЗИТА</span><input type="date" value={date} min={getToday()} onChange={(event) => setDate(event.target.value)} required /></label><fieldset className="booking-group time-group"><legend><span>04</span> СВОБОДНОЕ ВРЕМЯ</legend><div className="time-options">{timeSlots.map((slot) => <button type="button" key={slot} className={time === slot ? "selected" : ""} onClick={() => { setTime(slot); setNotice(""); }}>{slot}</button>)}</div></fieldset></div>
-          <div className="guest-fields"><label>ТВОЁ ИМЯ<input name="name" type="text" placeholder="Как к тебе обращаться" autoComplete="name" required /></label><label>ТЕЛЕФОН<input name="phone" type="tel" inputMode="tel" placeholder="+7 (___) ___-__-__" autoComplete="tel" value={phone} onChange={(event) => setPhone(formatRussianPhone(event.target.value))} pattern={String.raw`\+7 \([0-9]{3}\) [0-9]{3}-[0-9]{2}-[0-9]{2}`} title="Введите номер полностью: +7 (999) 123-45-67" maxLength={18} required /></label></div>
-          <label className="booking-consent">
-            <input type="checkbox" name="personalDataConsent" required />
-            <span>Я соглашаюсь на обработку персональных данных.</span>
-          </label>
+          <fieldset className="booking-group" data-booking-field="services" tabIndex={-1} aria-invalid={Boolean(errors.services)} aria-describedby={errors.services ? "services-error" : undefined}>
+            <legend><span>02</span> ВЫБЕРИ УСЛУГУ</legend>
+            <div className="booking-services">{services.map((service) => <button type="button" key={service.id} onClick={() => toggleService(service.id)} className={`booking-service${selected.includes(service.id) ? " selected" : ""}`} aria-pressed={selected.includes(service.id)}><span className="service-check">{selected.includes(service.id) ? "✓" : "+"}</span><span className="booking-service-name">{service.name}<small>{service.duration}</small></span><span className="booking-service-price">{rubles.format(service.price)} ₽</span></button>)}</div>
+            <FormFieldError id="services-error" message={errors.services} />
+          </fieldset>
+          <div className="date-time-row">
+            <div className="booking-group date-group">
+              <label className="group-title" htmlFor="booking-date"><span>03</span> ДАТА ВИЗИТА</label>
+              <input id="booking-date" name="date" data-booking-field="date" type="date" value={date} min={getToday()} onChange={(event) => setDate(event.target.value)} aria-invalid={Boolean(errors.date)} aria-describedby={errors.date ? "date-error" : undefined} required />
+              <FormFieldError id="date-error" message={errors.date} />
+            </div>
+            <fieldset className="booking-group time-group" data-booking-field="time" tabIndex={-1} aria-invalid={Boolean(errors.time)} aria-describedby={errors.time ? "time-error" : undefined}>
+              <legend><span>04</span> СВОБОДНОЕ ВРЕМЯ</legend>
+              <div className="time-options">{timeSlots.map((slot) => <button type="button" key={slot} className={time === slot ? "selected" : ""} onClick={() => setTime(slot)} aria-pressed={time === slot}>{slot}</button>)}</div>
+              <FormFieldError id="time-error" message={errors.time} />
+            </fieldset>
+          </div>
+          <div className="guest-fields">
+            <div className="guest-field">
+              <label htmlFor="booking-name">ТВОЁ ИМЯ</label>
+              <input id="booking-name" name="name" data-booking-field="name" type="text" placeholder="Как к тебе обращаться" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} aria-invalid={Boolean(errors.name)} aria-describedby={errors.name ? "name-error" : undefined} required />
+              <FormFieldError id="name-error" message={errors.name} />
+            </div>
+            <div className="guest-field">
+              <label htmlFor="booking-phone">ТЕЛЕФОН</label>
+              <input id="booking-phone" name="phone" data-booking-field="phone" type="tel" inputMode="tel" placeholder="+7 (___) ___-__-__" autoComplete="tel" value={phone} onChange={(event) => setPhone(formatRussianPhone(event.target.value))} pattern={russianPhonePattern} maxLength={18} aria-invalid={Boolean(errors.phone)} aria-describedby={errors.phone ? "phone-error" : undefined} required />
+              <FormFieldError id="phone-error" message={errors.phone} />
+            </div>
+          </div>
+          <div className="booking-consent-group">
+            <label className={`booking-consent${errors.personalDataConsent ? " booking-consent-invalid" : ""}`}>
+              <input type="checkbox" name="personalDataConsent" data-booking-field="personalDataConsent" checked={personalDataConsent} onChange={(event) => setPersonalDataConsent(event.target.checked)} aria-invalid={Boolean(errors.personalDataConsent)} aria-describedby={errors.personalDataConsent ? "consent-error" : undefined} required />
+              <span>Я соглашаюсь на обработку персональных данных.</span>
+            </label>
+            <FormFieldError id="consent-error" message={errors.personalDataConsent} />
+          </div>
+          {hasErrors && <div className="booking-validation-notice" role="alert"><span className="validation-notice-mark" aria-hidden="true">!</span><div><strong>Пара деталей — и готово.</strong><p>Заполни отмеченные поля, чтобы отправить заявку.</p></div></div>}
           <div className="form-bottom"><div className="booking-total"><span>ИТОГО ЗА УСЛУГИ</span><strong>{rubles.format(total)} <small>₽</small></strong></div><button className="button button-copper submit-booking" type="submit">Записаться <span>↗</span></button></div>
-          {notice && <p className="booking-notice" role="status">{notice}</p>}
         </form>
       </section>
 
       {confirmation && <BookingSuccessDialog message={confirmation} onClose={() => setConfirmation("")} />}
-
-      <section className="closing"><span className="section-index">ХОРОШО ВЫГЛЯДИШЬ — ХОРОШО СЕБЯ ЧУВСТВУЕШЬ.</span><p>До встречи в кресле.</p><a href="#booking">ЗАПИСАТЬСЯ ↗</a></section>
-      <footer className="site-footer"><a className="wordmark" href="#top">ЧЕРТА<span>®</span></a><span>БАРБЕРШОП ДЛЯ СВОИХ · 2026</span><div><a href="tel:+78005553535">+7 800 555-35-35</a><span>СДЕЛАНО С ХАРАКТЕРОМ</span></div></footer>
     </main>
   );
 }
